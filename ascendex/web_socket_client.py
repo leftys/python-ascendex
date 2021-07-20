@@ -13,7 +13,7 @@ from ascendex.exceptions import AscendexAPIException
 
 CHANNELS = ["order", "trades", "ref-px", "bar", "summary", "depth", "bbo"]
 OrderInfo = collections.namedtuple(
-    "Order", ["symbol", "px", "qty", "order_type", "order_side", "post_only"]
+    "OrderInfo", ["symbol", "px", "qty", "order_type", "order_side", "post_only"]
 )
 
 
@@ -73,10 +73,10 @@ class WebSocketClient:
         subscribers.add(coro)
         await self._send_subscribe(id_, channel)
 
-    async def unsubscribe(self, topic_id, channel):
+    async def unsubscribe(self, channel, id_):
         """unsubscribe a symbol/account from channel"""
-        await self._send_subscribe(topic_id, channel, unsubscribe = True)
-        del self.subscribers[channel][topic_id]
+        await self._send_subscribe(id_, channel, unsubscribe = True)
+        del self.subscribers[channel][id_]
 
     async def ping_pong(self):
         """ping pong to keep connection live"""
@@ -110,7 +110,7 @@ class WebSocketClient:
             elif "symbol" in message and message["m"] == "depth-snapshot":
                 self.responses[message["m"]][message["symbol"]].set_result(message)
                 del self.responses[message["m"]][message["symbol"]]
-            elif 'info' in message and 'id' in message['info']:
+            elif 'info' in message and 'id' in message['info'] and message['m'] != 'error':
                 self.responses[message["m"]][message["info"]['id']].set_result(message)
                 del self.responses[message["m"]][message["info"]['id']]
                 return
@@ -120,6 +120,8 @@ class WebSocketClient:
         elif "s" in message:
             id_ = message["s"]
         elif topic == 'order' and 'ac' in message:
+            id_ = message['ac'].lower()
+        elif topic == 'balance' and 'ac' in message:
             id_ = message['ac'].lower()
         elif "accountId" in message:
             id_ = message["accountId"]
