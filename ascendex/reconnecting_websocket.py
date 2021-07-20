@@ -31,6 +31,9 @@ class ReconnectingWebsocket:
         self._conn = asyncio.ensure_future(self._run(), loop=self._loop)
         self._conn.add_done_callback(self._handle_conn_done)
 
+    async def start(self):
+        await self.connected.wait()
+
     async def _run(self):
         keep_waiting = True
         self._log.debug("Connecting to %s", self._path)
@@ -53,24 +56,14 @@ class ReconnectingWebsocket:
                         try:
                             evt_obj = json.loads(evt)
                         except ValueError:
-                            pass
+                            self._log.error('Unable to parse = %s', evt)
                         else:
-                            topic = util.get_message_topic(evt_obj)
-                            if (
-                                topic == "pong"
-                                or topic == "sub"
-                                or topic == "connected"
-                                or topic == "unsub"
-                                or topic == "auth"
-                            ):
-                                self._log.debug(evt_obj)
-                            else:
-                                try:
-                                    await self._coro(evt_obj)
-                                except:
-                                    self._log.exception(
-                                        "Handling message failed = %s", evt_obj
-                                    )
+                            try:
+                                await self._coro(evt_obj)
+                            except:
+                                self._log.exception(
+                                    "Handling message failed = %s", evt_obj
+                                )
             except ws.ConnectionClosed as e:
                 self._log.info("ws connection closed: %r", e)
                 await self._reconnect()

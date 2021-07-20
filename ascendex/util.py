@@ -3,8 +3,7 @@ import hashlib
 import base64
 
 
-ROUTE_PREFIX = "api/pro/v1"
-ROUTE_PREFIX_V2 = "api/pro/v2"
+ROUTE_PREFIX = "api/pro"
 
 
 def sign(msg, secret):

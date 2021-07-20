@@ -1,4 +1,3 @@
-from abc import ABCMeta
 import asyncio
 import collections
 import logging
@@ -6,10 +5,10 @@ import uuid
 import time
 
 import ujson
-import numpy as np
 
 from ascendex.util import *
 from ascendex.reconnecting_websocket import ReconnectingWebsocket
+from ascendex.exceptions import AscendexAPIException
 
 
 CHANNELS = ["order", "trades", "ref-px", "bar", "summary", "depth", "bbo"]
@@ -23,7 +22,7 @@ class WebSocketClient:
 
     def __init__(self, group_id, api_key="", api_secret=""):
         self.loop = asyncio.get_event_loop()
-        url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/stream"
+        url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/v1/stream"
         self.ws = ReconnectingWebsocket(loop=self.loop, path=url, coro=self.on_message)
         self.subscribers = {}
         self.responses = collections.defaultdict(dict)
@@ -37,24 +36,18 @@ class WebSocketClient:
         return int(tm * 1e3)
 
     async def authenticate(self):
-        max_try = 0
-        while not self.ws.connected.is_set():
-            await asyncio.sleep(1)
-            max_try += 1
-            if max_try > 10:
-                break
+        await asyncio.wait_for(self.ws.connected.wait(), timeout = 10)
+        ts = self.utc_timestamp()
+        sig = make_auth_headers(ts, "stream", self.key, self.secret)[
+            "x-auth-signature"
+        ]
+        id_ = self.get_uuid()[:6]
+        msg = ujson.dumps(
+            dict(op="auth", id=id_, t=ts, key=self.key, sig=sig)
+        )
+        await self.ws.send(msg)
+        await self._wait_response('auth', id_)
 
-        if self.ws.connected.is_set():
-            ts = self.utc_timestamp()
-            sig = make_auth_headers(ts, "stream", self.key, self.secret)[
-                "x-auth-signature"
-            ]
-            msg = ujson.dumps(
-                dict(op="auth", id=self.get_uuid()[:6], t=ts, key=self.key, sig=sig)
-            )
-            await self.ws.send(msg)
-        else:
-            logging.error("websocket isn't active")
 
     @staticmethod
     def _get_subscribe_message(channel, symbols, unsubscribe=False):
@@ -67,13 +60,23 @@ class WebSocketClient:
             msg = self._get_subscribe_message(channel, symbol, unsubscribe)
             await self.ws.send(msg)
 
-    async def subscribe(self, topic_id, channel):
-        """subscribe a symbol/account to channel"""
-        await self._send_subscribe(topic_id, channel)
+    async def subscribe(self, channel, id_, coro):
+        """
+        Subscribe data. Only one subscriber is allowed per channel-id combination!
+        :param coro: callback coroutine accepting channel, id and data parameters
+        :param channel:  subscribe channel: order, trades, and so on
+        :param id: symbol or account id, depending on channel
+        :return:
+        """
+        channel_data = self.subscribers.setdefault(channel, dict())
+        subscribers = channel_data.setdefault(id_, set())
+        subscribers.add(coro)
+        await self._send_subscribe(id_, channel)
 
     async def unsubscribe(self, topic_id, channel):
         """unsubscribe a symbol/account from channel"""
-        await self._send_subscribe(topic_id, channel, True)
+        await self._send_subscribe(topic_id, channel, unsubscribe = True)
+        del self.subscribers[channel][topic_id]
 
     async def ping_pong(self):
         """ping pong to keep connection live"""
@@ -95,15 +98,37 @@ class WebSocketClient:
             await self.ping_pong()
             return
 
+        if topic == 'sub':
+            # Ignore subscription replies
+            return
+
+        if "m" in message:
+            if "id" in message:
+                self.responses[message["m"]][message["id"]].set_result(message)
+                del self.responses[message["m"]][message["id"]]
+                return
+            elif "symbol" in message and message["m"] == "depth-snapshot":
+                self.responses[message["m"]][message["symbol"]].set_result(message)
+                del self.responses[message["m"]][message["symbol"]]
+            elif 'info' in message and 'id' in message['info']:
+                self.responses[message["m"]][message["info"]['id']].set_result(message)
+                del self.responses[message["m"]][message["info"]['id']]
+                return
+
         if "symbol" in message:
-            topic_id = message["symbol"]
+            id_ = message["symbol"]
         elif "s" in message:
-            topic_id = message["s"]
+            id_ = message["s"]
+        elif topic == 'order' and 'ac' in message:
+            id_ = message['ac'].lower()
         elif "accountId" in message:
-            topic_id = message["accountId"]
+            id_ = message["accountId"]
+        elif "id" in message:
+            id_ = message['id']
         else:
             logging.error(f"unhandled message ${message}")
             return
+
         if "data" in message:
             data = message["data"]
         elif "info" in message:
@@ -113,20 +138,12 @@ class WebSocketClient:
         else:
             logging.error(f"no data info: ${message}")
             return
-        if "m" in message:
-            if "id" in message:
-                self.responses[message["m"]][message["id"]].set_result(message)
-                del self.responses[message["m"]][message["id"]]
-            elif "symbol" in message and message["m"] == "depth-snapshot":
-                self.responses[message["m"]][message["symbol"]].set_result(message)
-                del self.responses[message["m"]][message["symbol"]]
 
-        await self.publish_data(topic, topic_id, data)
-
-    async def publish_data(self, channel, id, data):
-        subscribers = self.subscribers.setdefault(channel, dict()).setdefault(id, set())
+        subscribers = self.subscribers.get(topic, dict()).get(id_, set())
+        if not subscribers:
+            logging.info(f'no subscribers ${message}')
         for subscriber in subscribers:
-            await subscriber.update(channel, id, data)
+            await subscriber(topic, id_, data)
 
     @staticmethod
     def get_channels(self):
@@ -143,18 +160,18 @@ class WebSocketClient:
 
         await self.ws.send(ujson.dumps(req))
 
-    async def trade_snapshot(self, symbol):
+    async def trade_snapshot(self, symbol, length = 500):
         """take trade snapshot"""
         req = {
             "op": "req",
             "action": "trade-snapshot",
-            "args": {"symbol": "{}".format(symbol), "level": 12},
+            "args": {"symbol": "{}".format(symbol), "level": length},
         }
 
         await self.ws.send(ujson.dumps(req))
 
     async def place_new_order(
-        self, symbol, px, qty, order_type, order_side, post_only=False, resp_inst="ACK"
+        self, symbol, px, qty, order_type, order_side, post_only=False, resp_inst="ACK", client_order_id = None,
     ):
         """
         Place a new order via websocket
@@ -168,13 +185,15 @@ class WebSocketClient:
         :param resp_inst: 'ACK', 'ACCEPT', or 'DONE'
         :return: user generated coid for this order
         """
+        if not client_order_id:
+            client_order_id = self.get_uuid()
         order_msg = {
             "op": "req",
             "action": "place-Order",
             "account": "cash",
             "args": {
                 "time": self.utc_timestamp(),
-                "coid": self.get_uuid(),
+                "id": client_order_id,
                 "symbol": symbol,
                 "orderPrice": str(px),
                 "orderQty": str(qty),
@@ -185,7 +204,8 @@ class WebSocketClient:
             },
         }
         await self.ws.send(ujson.dumps(order_msg))
-        return order_msg["args"]["coid"]
+        return await self._wait_response(action="order", id_=client_order_id)
+
 
     async def cancel_order(self, coid, symbol):
         """
@@ -195,19 +215,21 @@ class WebSocketClient:
         :param symbol: cancel target symbol
         :return:
         """
+        id_ = self.get_uuid()
         cancel_msg = {
             "op": "req",
             "action": "cancel-Order",
             "account": "cash",
             "args": {
                 "time": self.utc_timestamp(),
-                "coid": self.get_uuid(),
-                "origCoid": coid,
+                "id": id_,
+                "orderId": coid,
                 "symbol": symbol,
+                'respInst': 'DONE',
             },
         }
         await self.ws.send(ujson.dumps(cancel_msg))
-        return cancel_msg["coid"]
+        return await self._wait_response(action="order", id_=id_)
 
     async def cancel_all_orders(self, symbol=None):
         """
@@ -242,7 +264,7 @@ class WebSocketClient:
         }
 
         await self.ws.send(ujson.dumps(msg))
-        return await self._wait_response(action="open-order", id=id_)
+        return await self._wait_response(action="open-order", id_=id_)
 
     async def recent_trades(self, symbol, amount=500):
         """
@@ -260,9 +282,9 @@ class WebSocketClient:
         }
 
         await self.ws.send(ujson.dumps(msg))
-        return await self._wait_response(action="market-trades", id=id_)
+        return await self._wait_response(action="market-trades", id_=id_)
 
-    async def order_book_snapshot(self, symbol):
+    async def get_order_book(self, symbol):
         """
         Get recent trades.
         """
@@ -277,57 +299,35 @@ class WebSocketClient:
         }
 
         await self.ws.send(ujson.dumps(msg))
-        return await self._wait_response(action="depth-snapshot", id=symbol)
+        return await self._wait_response(action="depth-snapshot", id_=symbol)
 
-    def gen_order(self):
-        """generate some random order"""
-        symbol = np.random.choice(list(self.get_products()))
-        px = round(100 * (1 + (np.random.uniform() - 0.5) * 0.02), 6)
-        qty = round(max(1000.0 / px, 0.01), 6)
-        order_type = np.random.choice(["market", "limit"])
-        order_side = np.random.choice(["buy", "sell"])
-        post_only = [True, False][np.random.choice([0, 1])]
-        return OrderInfo(symbol, px, qty, order_type, order_side, post_only)
-
-    def get_uuid(self):
+    @staticmethod
+    def get_uuid():
         return uuid.uuid4().hex
 
-    async def _wait_response(self, action, id):
+    async def _wait_response(self, action, id_):
+        '''
+        Wait for reply on websocket, match the reply by action and id, return reply's 'data' or 'info' key.
+        'data' is the usual response content key, but 'info' is sent for order actions.
+        '''
         fut = asyncio.Future()
-        self.responses[action][id] = fut
+        self.responses[action][id_] = fut
         await fut
         result = fut.result()
-        return result["data"]
+        if 'reason' in result:
+            raise AscendexAPIException(result['reason'], result)
+        try:
+            return result["data"]
+        except KeyError:
+            try:
+                return result['info']
+            except KeyError:
+                return result
 
-    async def subscribe_subs(self, subscriber, channel, id):
-        """
-        subscribe
-        :param subscriber: subscriber object
-        :param channel:  subscribe channel: order, trades, and so on
-        :param id: symbol or account id, depending on channel
-        :return:
-        """
-        channel_data = self.subscribers.setdefault(channel, dict())
-        subscribers = channel_data.setdefault(id, set())
-        subscribers.add(subscriber)
-        await self.subscribe(id, channel)
+    async def start(self):
+        await self.ws.start()
+        await self.authenticate()
 
     async def close(self):
         # TODO more graceful cancel
         await self.ws.cancel()
-
-
-class Subscriber(metaclass=ABCMeta):
-    """
-    A simple data consumer
-    """
-
-    def __init__(self, client):
-        # TODO circular reference
-        self.client = client
-
-    async def update(self, channel, id, data):
-        pass
-
-    async def subscribe(self, channel, id):
-        pass

@@ -10,7 +10,6 @@ python = "^3.8"
 aiosonic = "^0.12.0"
 websockets = "^9.1"
 ujson = "^4.0.2"
-numpy = "^1.21.0"
 chardet = "^4.0.0"
 
 [tool.poetry.dev-dependencies]
