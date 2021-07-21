@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Python API for AscendEx"
 authors = ["Jan Skoda <skoda@jskoda.cz>"]
 license = "MIT"
+packages = [
+    {include = "ascendex"}
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"
