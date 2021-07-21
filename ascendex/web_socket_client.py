@@ -284,7 +284,9 @@ class WebSocketClient:
         }
 
         await self.ws.send(ujson.dumps(msg))
-        return await self._wait_response(action="market-trades", id_=id_)
+        response = await self._wait_response(action="market-trades", id_=id_)
+        response = list(sorted(response, key = lambda item: item['ts']))
+        return response
 
     async def get_order_book(self, symbol):
         """

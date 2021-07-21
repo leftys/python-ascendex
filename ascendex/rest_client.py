@@ -38,6 +38,7 @@ class RestClient:
         :param path: last portion of the api uri path without ROUTE_PREFIX, account and leading slash
         :param uri_account: 'cash' | 'margin' | ...
         :param include_group: should group id be included in uri?
+        :param include_group: should account type be included in uri?
         :param kwargs:
         :return:
         '''
@@ -105,6 +106,19 @@ class RestClient:
         res = await self._request("get", "info")
         return res["data"]
 
-    async def get_fills(self, symbol):
+    async def get_fills(self, symbol, limit):
+        res = await self._request(
+            "get",
+            "order/hist/current",
+            symbol = symbol,
+            executedOnly = True,
+            n = limit,
+            include_group = True,
+            uri_account = 'cash',
+            account = 'cash'
+        )
+        return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
+
+    async def get_order_events(self, symbol):
         res = await self._request("get", "order/hist", include_group = True, symbol=symbol, account = 'cash', version = 'v2')
-        return res["data"]
+        return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
