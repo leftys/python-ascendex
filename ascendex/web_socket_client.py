@@ -91,13 +91,14 @@ class WebSocketClient:
 
         :param dict message: message dictionary.
         """
-        # logging.debug(message)
         topic = get_message_topic(message)
 
         if topic == "ping":
             await self.ping_pong()
             return
-
+        if topic == 'pong':
+            # Ignore pong replies
+            return
         if topic == 'sub':
             # Ignore subscription replies
             return
@@ -110,6 +111,7 @@ class WebSocketClient:
             elif "symbol" in message and message["m"] == "depth-snapshot":
                 self.responses[message["m"]][message["symbol"]].set_result(message)
                 del self.responses[message["m"]][message["symbol"]]
+                return
             elif 'info' in message and 'id' in message['info'] and message['m'] != 'error':
                 self.responses[message["m"]][message["info"]['id']].set_result(message)
                 del self.responses[message["m"]][message["info"]['id']]
@@ -141,11 +143,13 @@ class WebSocketClient:
             logging.error(f"no data info: ${message}")
             return
 
-        subscribers = self.subscribers.get(topic, dict()).get(id_, set())
-        if not subscribers:
+        try:
+            subscribers = self.subscribers[topic][id_]
+        except KeyError:
             logging.info(f'no subscribers ${message}')
-        for subscriber in subscribers:
-            await subscriber(topic, id_, data)
+        else:
+            for subscriber in subscribers:
+                await subscriber(topic, id_, data)
 
     @staticmethod
     def get_channels(self):
