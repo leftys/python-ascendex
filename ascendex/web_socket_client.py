@@ -130,7 +130,7 @@ class WebSocketClient:
         elif "id" in message:
             id_ = message['id']
         else:
-            logging.error(f"unhandled message ${message}")
+            logging.warning(f"unhandled message ${message}")
             return
 
         if "data" in message:
