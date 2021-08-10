@@ -107,6 +107,9 @@ class WebSocketClient:
         if topic == 'sub':
             # Ignore subscription replies
             return
+        if topic == 'connected' and message['type'] == 'unauth':
+            # Ignore connected message
+            return
 
         try:
             if "m" in message:
