@@ -6,8 +6,6 @@ from random import random
 
 import websockets as ws
 
-from ascendex import util
-
 
 class ReconnectingWebsocket:
     MAX_RECONNECTS = 5
@@ -15,11 +13,12 @@ class ReconnectingWebsocket:
     MIN_RECONNECT_WAIT = 0.1
     TIMEOUT = 10
 
-    def __init__(self, loop, path, coro):
+    def __init__(self, loop, path, coro, reconnect_auth_coro = None):
         self._loop = loop
         self._log = logging.getLogger(__name__)
         self._path = path
         self._coro = coro
+        self._reconnect_auth_coro = reconnect_auth_coro
         self._reconnects = 0
         self._conn = None
         self._socket = None
@@ -100,6 +99,7 @@ class ReconnectingWebsocket:
             reconnect_wait = self._get_reconnect_wait(self._reconnects)
             await asyncio.sleep(reconnect_wait)
             self._connect()
+            await self._reconnect_auth_coro()
         else:
             self._log.error("Max reconnections {} reached:".format(self.MAX_RECONNECTS))
 

@@ -23,7 +23,12 @@ class WebSocketClient:
     def __init__(self, group_id, api_key="", api_secret=""):
         self.loop = asyncio.get_event_loop()
         url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/v1/stream"
-        self.ws = ReconnectingWebsocket(loop=self.loop, path=url, coro=self.on_message)
+        self.ws = ReconnectingWebsocket(
+            loop=self.loop,
+            path=url,
+            coro=self.on_message,
+            reconnect_auth_coro = self.authenticate,
+        )
         self.subscribers = {}
         self.responses = collections.defaultdict(dict)
 
@@ -103,19 +108,24 @@ class WebSocketClient:
             # Ignore subscription replies
             return
 
-        if "m" in message:
-            if "id" in message:
-                self.responses[message["m"]][message["id"]].set_result(message)
-                del self.responses[message["m"]][message["id"]]
-                return
-            elif "symbol" in message and message["m"] == "depth-snapshot":
-                self.responses[message["m"]][message["symbol"]].set_result(message)
-                del self.responses[message["m"]][message["symbol"]]
-                return
-            elif 'info' in message and 'id' in message['info'] and message['m'] != 'error':
-                self.responses[message["m"]][message["info"]['id']].set_result(message)
-                del self.responses[message["m"]][message["info"]['id']]
-                return
+        try:
+            if "m" in message:
+                if "id" in message:
+                    self.responses[message["m"]][message["id"]].set_result(message)
+                    del self.responses[message["m"]][message["id"]]
+                    return
+                elif "symbol" in message and message["m"] == "depth-snapshot":
+                    self.responses[message["m"]][message["symbol"]].set_result(message)
+                    del self.responses[message["m"]][message["symbol"]]
+                    return
+                elif 'info' in message and 'id' in message['info'] and message['m'] != 'error':
+                    self.responses[message["m"]][message["info"]['id']].set_result(message)
+                    del self.responses[message["m"]][message["info"]['id']]
+                    return
+        except KeyError:
+            if 'reason' in message and message['reason'] == 'AUTHORIZATION_NEEDED':
+                # Authorization neede message probably comes as a second response to the message id.
+                pass
 
         if "symbol" in message:
             id_ = message["symbol"]
