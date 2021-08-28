@@ -106,6 +106,23 @@ class RestClient:
         res = await self._request("get", "info")
         return res["data"]
 
+    async def get_candles(self, symbol, interval, start, end):
+        '''
+        :param interval: Candle interval such as 1 for minute candles and (probably) 60 for hourly.
+
+        WARN: Only at most 500 candles are supported, so you have to employ some paging.
+        '''
+        res = await self._request(
+            "get",
+            "barhist",
+            symbol = symbol,
+            interval = interval,
+            from = start,
+            to = end,
+            n = 500,
+        )
+        return res["data"]
+
     async def get_fills(self, symbol, limit):
         res = await self._request(
             "get",
