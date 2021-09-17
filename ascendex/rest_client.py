@@ -115,14 +115,16 @@ class RestClient:
 
         WARN: Only at most 500 candles are supported, so you have to employ some paging.
         '''
+        # Work around the fact that from is reserved keyword
+        kwargs = {'from': start}
         res = await self._request(
             "get",
             "barhist",
             symbol = symbol,
             interval = interval,
-            from = start,
             to = end,
             n = 500,
+            **kwargs,
         )
         return res["data"]
 
