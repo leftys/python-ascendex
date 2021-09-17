@@ -79,10 +79,13 @@ class RestClient:
             raise AscendexAPIException(response, await response.text())
         self.last_response_headers = response.headers
         try:
-            return ujson.loads(await response.content())
+            content = ujson.loads(await response.content())
         except ValueError:
             txt = await response.text()
             raise AscendexAPIException("Invalid Response", txt)
+        if 'message' in content and 'reason' in content:
+            raise AscendexAPIException(response, content['reason'] + ': ' + content['message'])
+        return content
 
     # Exchange Endpoints
 
@@ -123,7 +126,8 @@ class RestClient:
         )
         return res["data"]
 
-    async def get_fills(self, symbol, limit):
+    async def get_fills_deprecated(self, symbol, limit):
+        ''' this returns only fills of really recent orders (within limit) '''
         res = await self._request(
             "get",
             "order/hist/current",
@@ -136,6 +140,29 @@ class RestClient:
         )
         return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
 
-    async def get_order_events(self, symbol):
-        res = await self._request("get", "order/hist", include_group = True, symbol=symbol, account = 'cash', version = 'v2')
+    async def get_order_events(self, symbol, limit, seq_num = None, start_time_ms = None):
+        kwargs = {}
+        if seq_num is not None:
+            kwargs['seqNum'] = seq_num
+        if start_time_ms is not None:
+            kwargs['startTime'] = start_time_ms
+        res = await self._request(
+            "get",
+            "order/hist",
+            include_group = True,
+            symbol=symbol,
+            account = 'cash',
+            version = 'v2',
+            limit = limit,
+            **kwargs,
+        )
         return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
+
+    async def get_fills(self, symbol, since_time_ms):
+        fills = []
+        order_events = await self.get_order_events(symbol, 1000, start_time_ms = since_time_ms)
+        while order_events:
+            fills.extend([event for event in order_events if float(event['fillQty']) > 0])
+            seq_num = order_events[-1]['seqNum'] + 1
+            order_events = await self.get_order_events(symbol, 1000, seq_num)
+        return fills

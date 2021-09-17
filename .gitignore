@@ -108,7 +108,7 @@ env/
 venv/
 ENV/
 env.bak/
-venv.bak/
+venv.bak/77
 
 # Spyder project settings
 .spyderproject
@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# IDEs
+/.idea
+/.vscode
+
+# Files containing secrets
+test_websocket_client.py
+tests/test_rest_client.py
