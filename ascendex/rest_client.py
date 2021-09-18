@@ -1,3 +1,4 @@
+import asyncio
 import aiosonic
 import ujson
 import time
@@ -164,6 +165,7 @@ class RestClient:
         fills = []
         order_events = await self.get_order_events(symbol, 1000, start_time_ms = since_time_ms)
         while order_events:
+            await asyncio.sleep(1.5)
             fills.extend([event for event in order_events if float(event['fillQty']) > 0])
             seq_num = order_events[-1]['seqNum'] + 1
             order_events = await self.get_order_events(symbol, 1000, seq_num)
