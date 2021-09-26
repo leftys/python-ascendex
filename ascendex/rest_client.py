@@ -96,7 +96,7 @@ class RestClient:
                 response.connection.keep_alive if response.connection else None,
                 response.connection.blocked if response.connection else None
             )
-            raise AscendexAPIException('Connection lost during _handle_response')
+            raise AscendexAPIException('Connection lost during _handle_response', response)
 
         if 'message' in content and 'reason' in content:
             raise AscendexAPIException(response, content['reason'] + ': ' + content['message'])
