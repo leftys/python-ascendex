@@ -69,6 +69,7 @@ class RestClient:
         response = await self.session.request(
             uri, method, headers, params, data
         )
+        self.session.wait_requests
         return await self._handle_response(response)
 
     async def _handle_response(self, response: aiosonic.HttpResponse):
@@ -84,6 +85,17 @@ class RestClient:
         except ValueError:
             txt = await response.text()
             raise AscendexAPIException("Invalid Response", txt)
+        except AttributeError:
+            # weird aiosonic bug:
+            # File "/home/ec2-user/bot/env/lib/python3.8/site-packages/aiosonic/__init__.py", line 263, in read_chunks
+            # chunk_size = int((await self.connection.reader.readline()).rstrip(), 16)
+            # AttributeError: 'NoneType' object has no attribute 'reader'
+            raise AscendexAPIException(
+                'Connection lost during _handle_response',
+                response.chunked,
+                response.connection.keep_alive if response.connection else None,
+                response.connection.blocked if response.connection else None
+            )
         if 'message' in content and 'reason' in content:
             raise AscendexAPIException(response, content['reason'] + ': ' + content['message'])
         return content
