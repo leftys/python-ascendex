@@ -2,6 +2,7 @@ import asyncio
 import aiosonic
 import ujson
 import time
+import logging
 
 from ascendex.util import *
 from ascendex.exceptions import AscendexAPIException
@@ -90,12 +91,13 @@ class RestClient:
             # File "/home/ec2-user/bot/env/lib/python3.8/site-packages/aiosonic/__init__.py", line 263, in read_chunks
             # chunk_size = int((await self.connection.reader.readline()).rstrip(), 16)
             # AttributeError: 'NoneType' object has no attribute 'reader'
-            raise AscendexAPIException(
-                'Connection lost during _handle_response',
+            logging.warning('Reponse chunked=%s keep_alive=%s blocked=%s',
                 response.chunked,
                 response.connection.keep_alive if response.connection else None,
                 response.connection.blocked if response.connection else None
             )
+            raise AscendexAPIException('Connection lost during _handle_response')
+
         if 'message' in content and 'reason' in content:
             raise AscendexAPIException(response, content['reason'] + ': ' + content['message'])
         return content
