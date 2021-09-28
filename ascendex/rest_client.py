@@ -175,12 +175,16 @@ class RestClient:
         )
         return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
 
-    async def get_fills(self, symbol, since_time_ms):
-        fills = []
-        order_events = await self.get_order_events(symbol, 1000, start_time_ms = since_time_ms)
-        while order_events:
-            await asyncio.sleep(1.5)
-            fills.extend([event for event in order_events if float(event['fillQty']) > 0])
-            seq_num = order_events[-1]['seqNum'] + 1
-            order_events = await self.get_order_events(symbol, 1000, seq_num)
-        return fills
+    async def get_fills(self, symbol, limit, page = 0):
+        res = await self._request(
+            "get",
+            "order/hist",
+            include_group = True,
+            symbol = symbol,
+            category = 'CASH',
+            version = 'v1',
+            pageSize = limit,
+            page = page,
+            status = 'WithFill'
+        )
+        return list(sorted(res["data"]['data'], key = lambda item: item['lastExecTime']))
