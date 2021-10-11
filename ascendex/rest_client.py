@@ -187,4 +187,9 @@ class RestClient:
             page = page,
             status = 'WithFill'
         )
-        return list(sorted(res["data"]['data'], key = lambda item: item['lastExecTime']))
+        if not 'data' in res or 'data' in res['data']:
+            return []
+        return list(sorted(
+            res['data']['data'],
+            key = lambda item: item['lastExecTime']
+        ))
