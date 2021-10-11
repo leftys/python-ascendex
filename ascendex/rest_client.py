@@ -187,7 +187,7 @@ class RestClient:
             page = page,
             status = 'WithFill'
         )
-        if not 'data' in res or 'data' in res['data']:
+        if not 'data' in res or not 'data' in res['data']:
             return []
         return list(sorted(
             res['data']['data'],
