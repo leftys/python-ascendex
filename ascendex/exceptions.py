@@ -10,9 +10,11 @@ class AscendexAPIException(Exception):
 
     """
 
-    def __init__(self, response, data):
+    def __init__(self, uri, params, response, data):
+        self.uri = uri
+        self.params = params
         self.response = response
         self.data = data
 
     def __str__(self):  # pragma: no cover
-        return "AscendexAPIException {}: {}".format(self.response, self.data)
+        return "AscendexAPIException {}?{}: {}".format(self.uri, self.params, self.data)

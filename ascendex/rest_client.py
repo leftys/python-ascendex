@@ -12,12 +12,12 @@ class RestClient:
     API_URL = f"https://ascendex.com"
     POOL_SIZE = 10
 
-    def __init__(self, group_id, api_key, api_secret):
+    def __init__(self, group_id, api_key, api_secret, *, request_timeout = 30):
         self.group_id = group_id
         self.api_key = api_key
         self.api_secret = api_secret
         self.last_response_headers = {}
-        self._timeouts = aiosonic.Timeouts(request_timeout=30)
+        self._timeouts = aiosonic.Timeouts(request_timeout = request_timeout)
         self.session = self._init_session()
 
     def _init_session(self):
@@ -71,21 +71,21 @@ class RestClient:
             uri, method, headers, params, data
         )
         self.session.wait_requests
-        return await self._handle_response(response)
+        return await self._handle_response(uri, params, response)
 
-    async def _handle_response(self, response: aiosonic.HttpResponse):
+    async def _handle_response(self, uri: str, params: str, response: aiosonic.HttpResponse):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
         if not str(response.status_code).startswith("2"):
-            raise AscendexAPIException(response, await response.text())
+            raise AscendexAPIException(uri, params, response, await response.text())
         self.last_response_headers = response.headers
         try:
             content = ujson.loads(await response.content())
         except ValueError:
             txt = await response.text()
-            raise AscendexAPIException("Invalid Response", txt)
+            raise AscendexAPIException(uri, params, "Invalid Response", txt)
         except AttributeError:
             # weird aiosonic bug:
             # File "/home/ec2-user/bot/env/lib/python3.8/site-packages/aiosonic/__init__.py", line 263, in read_chunks
@@ -96,10 +96,10 @@ class RestClient:
                 response.connection.keep_alive if response.connection else None,
                 response.connection.blocked if response.connection else None
             )
-            raise AscendexAPIException('Connection lost during _handle_response', response)
+            raise AscendexAPIException(uri, params, 'Connection lost during _handle_response', response)
 
         if 'message' in content and 'reason' in content:
-            raise AscendexAPIException(response, content['reason'] + ': ' + content['message'])
+            raise AscendexAPIException(uri, params, response, content['reason'] + ': ' + content['message'])
         return content
 
     # Exchange Endpoints
