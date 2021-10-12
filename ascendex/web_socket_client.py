@@ -22,10 +22,10 @@ class WebSocketClient:
 
     def __init__(self, group_id, api_key="", api_secret=""):
         self.loop = asyncio.get_event_loop()
-        url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/v1/stream"
+        self._url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/v1/stream"
         self.ws = ReconnectingWebsocket(
             loop=self.loop,
-            path=url,
+            path=self._url,
             coro=self.on_message,
             reconnect_auth_coro = self.authenticate,
         )
@@ -336,7 +336,7 @@ class WebSocketClient:
         await fut
         result = fut.result()
         if 'reason' in result:
-            raise AscendexAPIException(result['reason'], result)
+            raise AscendexAPIException(self._url, action, result['reason'], result)
         try:
             return result["data"]
         except KeyError:
