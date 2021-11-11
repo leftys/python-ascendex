@@ -14,11 +14,14 @@ class ReconnectingWebsocket:
     TIMEOUT = 10
 
     def __init__(self, loop, path, coro, reconnect_auth_coro = None):
+        async def empty_coro():
+            pass
+
         self._loop = loop
         self._log = logging.getLogger(__name__)
         self._path = path
         self._coro = coro
-        self._reconnect_auth_coro = reconnect_auth_coro
+        self._reconnect_auth_coro = reconnect_auth_coro or empty_coro
         self._reconnects = 0
         self._conn = None
         self._socket = None
@@ -65,12 +68,12 @@ class ReconnectingWebsocket:
                                 )
             except ws.ConnectionClosed as e:
                 self._log.info("ws connection closed: %r", e)
-                await self._reconnect()
+                asyncio.create_task(self._reconnect())
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self._log.warning("ws exception: %r", e)
-                await self._reconnect()
+                asyncio.create_task(self._reconnect())
         self.connected.clear()
 
     def _handle_conn_done(self, task: asyncio.Task):
@@ -84,13 +87,12 @@ class ReconnectingWebsocket:
 
     def _get_reconnect_wait(self, attempts: int) -> int:
         expo = 2 ** attempts
-        return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
+        return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1))
 
     async def _reconnect(self):
         await self.cancel()
         self._reconnects += 1
         if self._reconnects < self.MAX_RECONNECTS:
-
             self._log.info(
                 "websocket {} reconnecting {} reconnects left".format(
                     self._path, self.MAX_RECONNECTS - self._reconnects
@@ -104,6 +106,10 @@ class ReconnectingWebsocket:
             self._log.error("Max reconnections {} reached:".format(self.MAX_RECONNECTS))
 
     async def send(self, data):
+        if not self.connected.is_set():
+            self._log.warning('Trying to send data on closed socket')
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self.connected.wait(), timeout = 10)
         await self._socket.send(data)
 
     async def send_ping(self):
