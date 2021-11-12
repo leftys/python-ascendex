@@ -19,6 +19,7 @@ class ReconnectingWebsocket:
 
         self._loop = loop
         self._log = logging.getLogger(__name__)
+        self._log.setLevel(logging.DEBUG)
         self._path = path
         self._coro = coro
         self._reconnect_auth_coro = reconnect_auth_coro or empty_coro
