@@ -101,6 +101,7 @@ class ReconnectingWebsocket:
             reconnect_wait = self._get_reconnect_wait(self._reconnects)
             await asyncio.sleep(reconnect_wait)
             self._connect()
+            await self.connected.wait()
             await self._reconnect_auth_coro()
         else:
             self._log.error("Max reconnections {} reached:".format(self.MAX_RECONNECTS))
