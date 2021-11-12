@@ -5,6 +5,7 @@ import uuid
 import time
 
 import ujson
+import websockets.exceptions
 
 from ascendex.util import *
 from ascendex.reconnecting_websocket import ReconnectingWebsocket
@@ -23,11 +24,12 @@ class WebSocketClient:
     def __init__(self, group_id, api_key="", api_secret=""):
         self.loop = asyncio.get_event_loop()
         self._url = f"{self.WS_DOMAIN}/{group_id}/{ROUTE_PREFIX}/v1/stream"
+        # TODO: the reconnection logic doesnt work properly, therefore we raise exception on reconnect
         self.ws = ReconnectingWebsocket(
             loop=self.loop,
             path=self._url,
             coro=self.on_message,
-            reconnect_auth_coro = self.authenticate,
+            reconnect_auth_coro = self._raise_on_disconnect,
         )
         self.subscribers = {}
         self.responses = collections.defaultdict(dict)
@@ -53,6 +55,8 @@ class WebSocketClient:
         await self.ws.send(msg)
         await self._wait_response('auth', id_)
 
+    async def _raise_on_disconnect(self) -> None:
+        raise websockets.exceptions.ConnectionClosedError(-1, 'Websocket connection lost')
 
     @staticmethod
     def _get_subscribe_message(channel, symbols, unsubscribe=False):
@@ -81,7 +85,10 @@ class WebSocketClient:
     async def unsubscribe(self, channel, id_):
         """unsubscribe a symbol/account from channel"""
         await self._send_subscribe(id_, channel, unsubscribe = True)
+        # Clear the defaultdict
         del self.subscribers[channel][id_]
+        if not self.subscribers[channel]:
+            del self.subscribers[channel]
 
     async def ping_pong(self):
         """ping pong to keep connection live"""
