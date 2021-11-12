@@ -119,10 +119,8 @@ class ReconnectingWebsocket:
             await self._socket.ping()
 
     async def cancel(self):
-        self._log.debug("canceling ws connection")
+        self._log.debug("canceling ws connection (without waiting for confirmation)")
         if self._conn:
             self.connected.clear()
             self._conn.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._conn
         self._socket = None

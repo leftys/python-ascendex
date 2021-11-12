@@ -10,6 +10,7 @@ Features:
 - almost complete websocket api
 - few methods from rest api that are not available in the websocket one
 - no order book modelling done
+- no automatic reconnection after API server disconnects the websocket
 - only cash/spot trading, no margin or futures
 - weakly tested error handling
 
