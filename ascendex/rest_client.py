@@ -84,8 +84,7 @@ class RestClient:
         try:
             content = ujson.loads(await response.content())
         except ValueError:
-            txt = await response.text()
-            raise AscendexAPIException(uri, params, "Invalid Response", txt)
+            raise AscendexAPIException(uri, params, response, await response.text())
         except AttributeError:
             # weird aiosonic bug:
             # File "/home/ec2-user/bot/env/lib/python3.8/site-packages/aiosonic/__init__.py", line 263, in read_chunks
@@ -96,7 +95,7 @@ class RestClient:
                 response.connection.keep_alive if response.connection else None,
                 response.connection.blocked if response.connection else None
             )
-            raise AscendexAPIException(uri, params, 'Connection lost during _handle_response', response)
+            raise AscendexAPIException(uri, params, response, 'Connection lost during _handle_response')
 
         if 'message' in content and 'reason' in content:
             raise AscendexAPIException(uri, params, response, content['reason'] + ': ' + content['message'])
