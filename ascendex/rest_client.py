@@ -1,3 +1,4 @@
+from typing import Optional
 import asyncio
 import aiosonic
 import ujson
@@ -20,7 +21,7 @@ class RestClient:
         self._timeouts = aiosonic.Timeouts(request_timeout = request_timeout)
         self.session = self._init_session()
 
-    def _init_session(self):
+    def _init_session(self) -> aiosonic.HTTPClient:
         session = aiosonic.HTTPClient(
             connector=aiosonic.TCPConnector(
                 pool_size=self.POOL_SIZE,
@@ -32,7 +33,7 @@ class RestClient:
     async def close(self):
         await self.session.shutdown()
 
-    async def _request(self, method, path, uri_account = None, include_group = False, version = 'v1', **kwargs):
+    async def _request(self, method, path, uri_account = None, include_group = False, version = 'v1', timeouts: Optional[aiosonic.Timeouts] = None, **kwargs):
         '''
         Perform REST api request
 
@@ -68,7 +69,7 @@ class RestClient:
         # print(params)
         # print(data)
         response = await self.session.request(
-            uri, method, headers, params, data
+            url = uri, method = method, headers = headers, params = params, data = data, timeouts = timeouts
         )
         self.session.wait_requests
         return await self._handle_response(uri, params, response)
@@ -170,6 +171,7 @@ class RestClient:
             account = 'cash',
             version = 'v2',
             limit = limit,
+            timeouts = aiosonic.Timeouts(request_timeout = 5 * 60),
             **kwargs,
         )
         return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
@@ -184,7 +186,8 @@ class RestClient:
             version = 'v1',
             pageSize = limit,
             page = page,
-            status = 'WithFill'
+            status = 'WithFill',
+            timeouts = aiosonic.Timeouts(request_timeout = 5 * 60),
         )
         if not 'data' in res or not 'data' in res['data']:
             return []
