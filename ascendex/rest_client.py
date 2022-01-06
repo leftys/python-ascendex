@@ -171,7 +171,7 @@ class RestClient:
             account = 'cash',
             version = 'v2',
             limit = limit,
-            timeouts = aiosonic.Timeouts(request_timeout = 5 * 60),
+            timeouts = aiosonic.Timeouts(request_timeout = 10 + limit * 0.1),
             **kwargs,
         )
         return list(sorted(res["data"], key = lambda item: item['lastExecTime']))
@@ -187,7 +187,7 @@ class RestClient:
             pageSize = limit,
             page = page,
             status = 'WithFill',
-            timeouts = aiosonic.Timeouts(request_timeout = 5 * 60),
+            timeouts = aiosonic.Timeouts(request_timeout = 10 + page * limit * 0.1),
         )
         if not 'data' in res or not 'data' in res['data']:
             return []
