@@ -11,7 +11,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.8"
 aiosonic = "^0.12.0"
-websockets = "^9.1"
+websockets = ">=9.1,<10.4"
 ujson = "^5.1.0"
 chardet = "^4.0.0"
 
