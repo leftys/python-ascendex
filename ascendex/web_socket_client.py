@@ -29,7 +29,7 @@ class WebSocketClient:
             loop=self.loop,
             path=self._url,
             coro=self.on_message,
-            reconnect_auth_coro = self._raise_on_disconnect,
+            reconnect_auth_coro = self._on_reconnect,
         )
         self.subscribers = {}
         self.responses = collections.defaultdict(dict)
@@ -55,8 +55,12 @@ class WebSocketClient:
         await self.ws.send(msg)
         await self._wait_response('auth', id_)
 
-    async def _raise_on_disconnect(self) -> None:
-        raise websockets.exceptions.ConnectionClosedError(-1, 'Websocket connection lost')
+    async def _on_reconnect(self):
+        await self.authenticate()
+        # Resubscribe
+        for channel, ids in self.subscribers.items():
+            for id_ in ids:
+                await self._send_subscribe(id_, channel)
 
     @staticmethod
     def _get_subscribe_message(channel, symbols, unsubscribe=False):
