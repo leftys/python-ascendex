@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-ascendex"
-version = "0.1.3"
+version = "0.2.0"
 description = "Python API for AscendEx"
 authors = ["Jan Skoda <skoda@jskoda.cz>"]
 license = "MIT"
@@ -10,8 +10,8 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-aiosonic = "^0.16.1"
-websockets = ">=11.0.2,<12"
+aiosonic = ">=0.16.1"
+websockets = ">=11.0.2,<14"
 ujson = "^5.1.0"
 chardet = "^4.0.0"
 
